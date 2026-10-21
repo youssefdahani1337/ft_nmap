@@ -1,0 +1,10 @@
+# libpcap's pcap_findalldevs() probes Bluetooth devices with an ioctl whose
+# buffer valgrind cannot see being filled. Not our code.
+{
+   libpcap_findalldevs_bluetooth_ioctl
+   Memcheck:Param
+   ioctl(HCIGETDEVLIST)
+   fun:ioctl
+   ...
+   fun:pcap_findalldevs
+}
