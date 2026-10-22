@@ -33,18 +33,75 @@ static const char	*get_service_name(uint16_t port)
 	return (se ? se->s_name : "Unassigned");
 }
 
-/* TEMPORARY raw output with service names, replaced by
-** the Open / Closed tables in the output step. */
-static void	print_raw(const t_nmap *cfg, const t_port_result *results)
+/* Determine conclusion: Open if any scan says Open, else Filtered if SYN says
+** Filtered (SYN is at index 0 in g_scan_order), else Closed. */
+static t_result	get_conclusion(const t_port_result *pr)
 {
+	for (int s = 0; s < NB_SCAN_TYPES; s++)
+		if (pr->res[s] == RES_OPEN)
+			return (RES_OPEN);
+	if (pr->res[0] == RES_FILTERED)
+		return (RES_FILTERED);
+	return (RES_CLOSED);
+}
+
+/* Print one table row with results for all requested scans */
+static void	print_port_row(const t_nmap *cfg, const t_port_result *pr, t_result conclusion)
+{
+	printf("%-6u %-15s", pr->port, get_service_name(pr->port));
+	for (int s = 0; s < NB_SCAN_TYPES; s++)
+	{
+		if (cfg->scans & g_scan_order[s])
+		{
+			if (pr->res[s] == RES_NONE)
+				printf(" %s(-)", scan_name(g_scan_order[s]));
+			else
+				printf(" %s(%s)", scan_name(g_scan_order[s]), result_name(pr->res[s]));
+		}
+	}
+	printf(" %s\n", result_name(conclusion));
+}
+
+/* Print table of ports with the given conclusion status */
+static void	print_table(const t_nmap *cfg, const t_port_result *results,
+				t_result table_type)
+{
+	const char	*title = NULL;
+	int			header_printed = 0;
+
+	if (table_type == RES_OPEN)
+		title = "Open ports:";
+	else
+		title = "Closed/Filtered/Unfiltered ports:";
+
 	for (int i = 0; i < cfg->nb_ports; i++)
 	{
-		printf("%-6u %-15s", results[i].port, get_service_name(results[i].port));
-		for (int s = 0; s < NB_SCAN_TYPES; s++)
-			if (cfg->scans & g_scan_order[s])
-				printf(" %s(%s)", scan_name(g_scan_order[s]), result_name(results[i].res[s]));
-		printf("\n");
+		t_result	conclusion = get_conclusion(&results[i]);
+
+		if ((table_type == RES_OPEN && conclusion == RES_OPEN)
+			|| (table_type != RES_OPEN && conclusion != RES_OPEN))
+		{
+			if (!header_printed)
+			{
+				printf("%s\n", title);
+				printf("Port Service Name (if applicable) Results");
+				printf("%*s Conclusion\n", 30, "");
+				printf("----------------------------------------------------------------------------\n");
+				header_printed = 1;
+			}
+			print_port_row(cfg, &results[i], conclusion);
+		}
 	}
+	if (header_printed)
+		printf("\n");
+}
+
+/* Print formatted output tables (Open and Closed/Filtered) */
+static void	print_results(const t_nmap *cfg, struct in_addr target, const t_port_result *results)
+{
+	printf("IP address: %s\n", inet_ntoa(target));
+	print_table(cfg, results, RES_OPEN);
+	print_table(cfg, results, RES_CLOSED);
 }
 
 static int	scan_all(const t_nmap *cfg)
@@ -58,14 +115,15 @@ static int	scan_all(const t_nmap *cfg)
 		return (perror("ft_nmap: calloc"), -1);
 	for (size_t t = 0; t < cfg->nb_targets && ret == 0; t++)
 	{
-		printf("Scanning %s (%s)..\n", inet_ntoa(cfg->targets[t].addr), cfg->targets[t].name);
+		printf("Scanning..");
 		fflush(stdout);
 		start = now_sec();
 		ret = run_scan(cfg, cfg->targets[t].addr, results);
 		if (ret == 0)
 		{
+			printf("\n");
 			printf("Scan took %.5f secs\n", now_sec() - start);
-			print_raw(cfg, results);
+			print_results(cfg, cfg->targets[t].addr, results);
 		}
 	}
 	free(results);
