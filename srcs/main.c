@@ -1,6 +1,7 @@
 #include "../includes/threads.h"
 #include <time.h>
 #include <sys/time.h>
+#include <netdb.h>
 
 static void	print_config(const t_nmap *cfg)
 {
@@ -23,13 +24,22 @@ static double	now_sec(void)
 	return ((double)tv.tv_sec + (double)tv.tv_usec / 1e6);
 }
 
-/* TEMPORARY raw output (one "PORT SYN(Open) ..." line per port), replaced by
+/* Get service name for a port, or "Unassigned" if not found */
+static const char	*get_service_name(uint16_t port)
+{
+	struct servent	*se;
+
+	se = getservbyport(htons(port), "tcp");
+	return (se ? se->s_name : "Unassigned");
+}
+
+/* TEMPORARY raw output with service names, replaced by
 ** the Open / Closed tables in the output step. */
 static void	print_raw(const t_nmap *cfg, const t_port_result *results)
 {
 	for (int i = 0; i < cfg->nb_ports; i++)
 	{
-		printf("%-6u", results[i].port);
+		printf("%-6u %-15s", results[i].port, get_service_name(results[i].port));
 		for (int s = 0; s < NB_SCAN_TYPES; s++)
 			if (cfg->scans & g_scan_order[s])
 				printf(" %s(%s)", scan_name(g_scan_order[s]), result_name(results[i].res[s]));
