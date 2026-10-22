@@ -162,6 +162,9 @@ Implemented in `srcs/main.c`:
 - **`print_port_row()`**: Formats one port with all scan results and conclusion
 - Replaced `print_raw()` with new table-based output
 - Timing already done: `"Scan took X.XXXXX secs"` from `gettimeofday()`
+- **Updated `tests/test_live.sh`**: Modified `row()` function to parse new table format
+  - Removes port, service name, and conclusion fields
+  - Extracts just the scan results for comparison
 
 Output format:
 ```
@@ -177,8 +180,8 @@ Closed/Filtered/Unfiltered ports:
 
 ## 9. Next steps (step 11-13)
 
-- **Test_live.sh update**: Currently parses raw `PORT SYN(x) ...` lines, needs update for new table format
 - Robustness: check every return value (malloc, pcap_*, pthread_*, sendto), handle unreachable hosts, and free everything.
+- Full test campaign with various thread counts and memory checkers.
 
 ## 10. Repository housekeeping (found during analysis)
 
