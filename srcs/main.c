@@ -16,39 +16,48 @@ static void	print_config(const t_nmap *cfg)
 	printf("\nNo of threads : %d\n", cfg->speedup);
 }
 
-static double	now_sec(void)
+static int	now_sec(double *seconds)
 {
-	struct timeval	tv;
+	struct timespec	ts;
 
-	gettimeofday(&tv, NULL);
-	return ((double)tv.tv_sec + (double)tv.tv_usec / 1e6);
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+		return (perror("ft_nmap: clock_gettime"), -1);
+	*seconds = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+	return (0);
 }
 
 /* Get service name for a port, or "Unassigned" if not found */
-static const char	*get_service_name(uint16_t port)
+static const char	*get_service_name(uint16_t port, const t_nmap *cfg)
 {
 	struct servent	*se;
+	const char	*proto = (cfg->scans == SCAN_UDP) ? "udp" : "tcp";
 
-	se = getservbyport(htons(port), "tcp");
+	se = getservbyport(htons(port), proto);
 	return (se ? se->s_name : "Unassigned");
 }
 
-/* Determine conclusion: Open if any scan says Open, else Filtered if SYN says
-** Filtered (SYN is at index 0 in g_scan_order), else Closed. */
+/* Conclusion priority is Open > Unfiltered > Filtered > Open|Filtered > Closed. */
 static t_result	get_conclusion(const t_port_result *pr)
 {
 	for (int s = 0; s < NB_SCAN_TYPES; s++)
 		if (pr->res[s] == RES_OPEN)
 			return (RES_OPEN);
-	if (pr->res[0] == RES_FILTERED)
-		return (RES_FILTERED);
+	for (int s = 0; s < NB_SCAN_TYPES; s++)
+		if (pr->res[s] == RES_UNFILTERED)
+			return (RES_UNFILTERED);
+	for (int s = 0; s < NB_SCAN_TYPES; s++)
+		if (pr->res[s] == RES_FILTERED)
+			return (RES_FILTERED);
+	for (int s = 0; s < NB_SCAN_TYPES; s++)
+		if (pr->res[s] == RES_OPEN_FILTERED)
+			return (RES_OPEN_FILTERED);
 	return (RES_CLOSED);
 }
 
 /* Print one table row with results for all requested scans */
 static void	print_port_row(const t_nmap *cfg, const t_port_result *pr, t_result conclusion)
 {
-	printf("%-6u %-15s", pr->port, get_service_name(pr->port));
+	printf("%-6u %-15s", pr->port, get_service_name(pr->port, cfg));
 	for (int s = 0; s < NB_SCAN_TYPES; s++)
 	{
 		if (cfg->scans & g_scan_order[s])
@@ -108,6 +117,7 @@ static int	scan_all(const t_nmap *cfg)
 {
 	t_port_result	*results;
 	double			start;
+	double			finish;
 	int				ret = 0;
 
 	results = calloc((size_t)cfg->nb_ports, sizeof(*results));
@@ -117,13 +127,22 @@ static int	scan_all(const t_nmap *cfg)
 	{
 		printf("Scanning..");
 		fflush(stdout);
-		start = now_sec();
+		if (now_sec(&start) < 0)
+		{
+			ret = -1;
+			break ;
+		}
 		ret = run_scan(cfg, cfg->targets[t].addr, results);
 		if (ret == 0)
 		{
-			printf("\n");
-			printf("Scan took %.5f secs\n", now_sec() - start);
-			print_results(cfg, cfg->targets[t].addr, results);
+			if (now_sec(&finish) < 0)
+				ret = -1;
+			else
+			{
+				printf("\n");
+				printf("Scan took %.5f secs\n", finish - start);
+				print_results(cfg, cfg->targets[t].addr, results);
+			}
 		}
 	}
 	free(results);

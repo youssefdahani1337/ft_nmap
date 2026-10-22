@@ -1,6 +1,7 @@
 # Build artifacts
 *.o
 ft_nmap
+objs/
 tests/test_packet
 tests/test_reply
 

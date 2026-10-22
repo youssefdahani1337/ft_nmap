@@ -155,13 +155,20 @@ int	open_raw_socket(int proto)
 int	send_probe(int sock, struct in_addr dst, const uint8_t *buf, size_t len)
 {
 	struct sockaddr_in	to;
+	ssize_t				sent;
 
 	memset(&to, 0, sizeof(to));
 	to.sin_family = AF_INET;
 	to.sin_addr = dst;		/* sin_port stays 0: it is in the L4 header */
-	if (sendto(sock, buf, len, 0, (struct sockaddr *)&to, sizeof(to)) < 0)
+	sent = sendto(sock, buf, len, 0, (struct sockaddr *)&to, sizeof(to));
+	if (sent < 0)
 	{
 		perror("ft_nmap: sendto");
+		return (-1);
+	}
+	if ((size_t)sent != len)
+	{
+		fprintf(stderr, "ft_nmap: short probe write (%zd/%zu bytes)\n", sent, len);
 		return (-1);
 	}
 	return (0);

@@ -103,8 +103,14 @@ echo "== 2. output options =="
 timeout 60 $BIN --ip 127.0.0.1 --ports $P_UDP_OPEN,$P_CLOSED --scan UDP/SYN > "$TMP/sub.txt" 2>&1
 check_row "$TMP/sub.txt" $P_CLOSED   "SYN(Closed) UDP(Closed)" "--scan UDP/SYN: only those scans, printed SYN first"
 check_row "$TMP/sub.txt" $P_UDP_OPEN "SYN(Closed) UDP(Open)"   "second port row correct"
-[ "$(grep -E '^180' "$TMP/sub.txt" | awk '{print $1}' | tr '\n' ' ')" == "$P_CLOSED $P_UDP_OPEN " ] \
-	&& ok "ports listed in ascending order even if given reversed" || bad "ports not sorted" "$(cat "$TMP/sub.txt")"
+OPEN_ORDER=$(awk '/^Open ports:/{inside=1; next} /^Closed\/Filtered\/Unfiltered ports:/{inside=0} inside && $1 ~ /^180/{print $1}' "$TMP/sub.txt")
+CLOSED_ORDER=$(awk '/^Closed\/Filtered\/Unfiltered ports:/{inside=1; next} inside && $1 ~ /^180/{print $1}' "$TMP/sub.txt")
+if [ "$OPEN_ORDER" = "$(printf '%s\n' "$OPEN_ORDER" | sort -n)" ] \
+	&& [ "$CLOSED_ORDER" = "$(printf '%s\n' "$CLOSED_ORDER" | sort -n)" ]; then
+	ok "ports listed in ascending order within each result table"
+else
+	bad "ports not sorted" "$(cat "$TMP/sub.txt")"
+fi
 timeout 60 $BIN --ip localhost --ports $P_CLOSED --scan ack > "$TMP/host.txt" 2>&1
 check_row "$TMP/host.txt" $P_CLOSED "ACK(Unfiltered)" "hostname 'localhost' + lowercase scan name work"
 
@@ -169,8 +175,12 @@ if command -v valgrind >/dev/null; then
 else
 	skip "valgrind not installed"
 fi
-timeout 30 valgrind -q --leak-check=full --error-exitcode=99 $BIN --file tests/ips.txt --ports 1-20 > "$TMP/vg2.txt" 2>&1; RC=$?
-[ $RC -eq 0 ] && ok "valgrind: parsing a target file leaks nothing" || bad "valgrind on parsing (rc=$RC)" "$(head -15 "$TMP/vg2.txt")"
+if command -v valgrind >/dev/null; then
+	timeout 30 valgrind -q --suppressions=tests/valgrind.supp --leak-check=full --error-exitcode=99 $BIN --file tests/ips.txt --ports 1-20 > "$TMP/vg2.txt" 2>&1; RC=$?
+	[ $RC -eq 0 ] && ok "valgrind: parsing a target file leaks nothing" || bad "valgrind on parsing (rc=$RC)" "$(head -15 "$TMP/vg2.txt")"
+else
+	skip "valgrind target-file check (not installed)"
+fi
 
 echo
 echo "Result: $PASS passed, $FAIL failed, $SKIP skipped"

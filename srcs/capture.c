@@ -82,6 +82,7 @@ void	scanner_close(t_scanner *sc)
 	if (sc->udp_sock >= 0)
 		close(sc->udp_sock);
 	sc->handle = NULL;
+	sc->fd = -1;
 	sc->tcp_sock = -1;
 	sc->udp_sock = -1;
 }
@@ -97,11 +98,17 @@ static pcap_t	*open_handle(const char *dev)
 	handle = pcap_create(dev, errbuf);
 	if (!handle)
 		return (fprintf(stderr, "ft_nmap: pcap_create(%s): %s\n", dev, errbuf), NULL);
-	pcap_set_snaplen(handle, SNAPLEN);
-	pcap_set_promisc(handle, 0);
-	pcap_set_timeout(handle, PCAP_READ_MS);
-	pcap_set_buffer_size(handle, PCAP_BUFFER_SIZE);
-	pcap_set_immediate_mode(handle, 1);	/* deliver each reply at once, not per 50ms block */
+	if (pcap_set_snaplen(handle, SNAPLEN) != 0
+		|| pcap_set_promisc(handle, 0) != 0
+		|| pcap_set_timeout(handle, PCAP_READ_MS) != 0
+		|| pcap_set_buffer_size(handle, PCAP_BUFFER_SIZE) != 0
+		|| pcap_set_immediate_mode(handle, 1) != 0)
+	{
+		fprintf(stderr, "ft_nmap: pcap configuration failed on %s: %s\n", dev,
+			pcap_geterr(handle));
+		pcap_close(handle);
+		return (NULL);
+	}
 	rc = pcap_activate(handle);
 	if (rc < 0)
 	{
@@ -175,8 +182,12 @@ static int	same_ip(const uint8_t *raw, struct in_addr ip)
 static t_result	parse_tcp(const uint8_t *tcp, size_t len, const t_probe *p)
 {
 	uint8_t	flags;
+	size_t	header_len;
 
-	if (p->scan == SCAN_UDP || len < 14)
+	if (p->scan == SCAN_UDP || len < 20)
+		return (RES_NONE);
+	header_len = (size_t)(tcp[12] >> 4) * 4;
+	if (header_len < 20 || header_len > len)
 		return (RES_NONE);
 	if (rd16(tcp) != p->dport || rd16(tcp + 2) != p->sport)
 		return (RES_NONE);
@@ -200,7 +211,12 @@ static t_result	parse_tcp(const uint8_t *tcp, size_t len, const t_probe *p)
 
 static t_result	parse_udp(const uint8_t *udp, size_t len, const t_probe *p)
 {
+	size_t	packet_len;
+
 	if (p->scan != SCAN_UDP || len < 8)
+		return (RES_NONE);
+	packet_len = rd16(udp + 4);
+	if (packet_len < 8 || packet_len > len)
 		return (RES_NONE);
 	if (rd16(udp) != p->dport || rd16(udp + 2) != p->sport)
 		return (RES_NONE);
@@ -222,7 +238,7 @@ static t_result	parse_icmp(const uint8_t *icmp, size_t len, const t_probe *p)
 	if ((in[0] >> 4) != 4)
 		return (RES_NONE);
 	ihl = (size_t)(in[0] & 0x0F) * 4;
-	if (ihl < 20 || inlen < ihl + 4)
+	if (ihl < 20 || inlen < ihl + 4 || (rd16(in + 6) & 0x3FFF) != 0)
 		return (RES_NONE);
 	want_proto = (p->scan == SCAN_UDP) ? IPPROTO_UDP : IPPROTO_TCP;
 	if (in[9] != want_proto || !same_ip(in + 12, p->src) || !same_ip(in + 16, p->dst))
@@ -231,7 +247,8 @@ static t_result	parse_icmp(const uint8_t *icmp, size_t len, const t_probe *p)
 		return (RES_NONE);
 	if (p->scan == SCAN_UDP && code == 3)	/* port unreachable = closed */
 		return (RES_CLOSED);
-	if (code == 1 || code == 2 || code == 3 || code == 9 || code == 10 || code == 13)
+	if (code == 0 || code == 1 || code == 2 || code == 3 || code == 9
+		|| code == 10 || code == 13)
 		return (RES_FILTERED);
 	return (RES_NONE);
 }
@@ -244,11 +261,12 @@ t_result	parse_reply(const uint8_t *ip, size_t len, const t_probe *p)
 	if (!ip || !p || len < 20 || (ip[0] >> 4) != 4)
 		return (RES_NONE);
 	ihl = (size_t)(ip[0] & 0x0F) * 4;
-	if (ihl < 20 || len < ihl)
+	if (ihl < 20 || len < ihl || (rd16(ip + 6) & 0x3FFF) != 0)
 		return (RES_NONE);
 	if (ip[9] == IPPROTO_ICMP)
 		return (parse_icmp(ip + ihl, len - ihl, p));
-	if (!same_ip(ip + 12, p->dst))		/* TCP/UDP replies must come from the target */
+	if (!same_ip(ip + 12, p->dst) || !same_ip(ip + 16, p->src))
+		/* Direct replies must come from the target to our source address. */
 		return (RES_NONE);
 	if (ip[9] == IPPROTO_TCP)
 		return (parse_tcp(ip + ihl, len - ihl, p));
@@ -263,7 +281,8 @@ static long	elapsed_ms(const struct timespec *start)
 {
 	struct timespec	now;
 
-	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+		return (-1);
 	return ((now.tv_sec - start->tv_sec) * 1000L + (now.tv_nsec - start->tv_nsec) / 1000000L);
 }
 
@@ -298,6 +317,7 @@ int	wait_reply(t_scanner *sc, const t_probe *p, int timeout_ms, t_result *out)
 {
 	struct timespec	start;
 	struct pollfd	pfd;
+	long			elapsed;
 	long			left;
 	int				ret;
 
@@ -305,12 +325,22 @@ int	wait_reply(t_scanner *sc, const t_probe *p, int timeout_ms, t_result *out)
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	pfd.fd = sc->fd;
 	pfd.events = POLLIN;
-	while ((left = timeout_ms - elapsed_ms(&start)) > 0)
+	while (1)
 	{
+		elapsed = elapsed_ms(&start);
+		if (elapsed < 0)
+			return (perror("ft_nmap: clock_gettime"), -1);
+		left = timeout_ms - elapsed;
+		if (left <= 0)
+			break ;
 		if ((ret = drain_packets(sc, p, out)) != 0)
 			return (ret < 0 ? -1 : 0);
 		if (sc->fd >= 0)
-			poll(&pfd, 1, left > PCAP_READ_MS ? PCAP_READ_MS : (int)left);
+		{
+			ret = poll(&pfd, 1, left > PCAP_READ_MS ? PCAP_READ_MS : (int)left);
+			if (ret < 0 && errno != EINTR)
+				return (fprintf(stderr, "ft_nmap: poll: %s\n", strerror(errno)), -1);
+		}
 		else
 			usleep(1000);
 	}

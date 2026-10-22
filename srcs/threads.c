@@ -5,19 +5,31 @@
 static long	take_job(t_job_ctx *ctx)
 {
 	long	job = -1;
+	int	rc;
 
-	pthread_mutex_lock(&ctx->lock);
+	rc = pthread_mutex_lock(&ctx->lock);
+	if (rc != 0)
+		return (fprintf(stderr, "ft_nmap: pthread_mutex_lock failed: %s\n", strerror(rc)), -2);
 	if (!ctx->error && ctx->next_job < ctx->nb_jobs)
 		job = (long)ctx->next_job++;
-	pthread_mutex_unlock(&ctx->lock);
+	rc = pthread_mutex_unlock(&ctx->lock);
+	if (rc != 0)
+		return (fprintf(stderr, "ft_nmap: pthread_mutex_unlock failed: %s\n", strerror(rc)), -2);
 	return (job);
 }
 
-static void	set_error(t_job_ctx *ctx)
+static int	set_error(t_job_ctx *ctx)
 {
-	pthread_mutex_lock(&ctx->lock);
+	int	rc;
+
+	rc = pthread_mutex_lock(&ctx->lock);
+	if (rc != 0)
+		return (fprintf(stderr, "ft_nmap: pthread_mutex_lock failed: %s\n", strerror(rc)), -1);
 	ctx->error = 1;
-	pthread_mutex_unlock(&ctx->lock);
+	rc = pthread_mutex_unlock(&ctx->lock);
+	if (rc != 0)
+		return (fprintf(stderr, "ft_nmap: pthread_mutex_unlock failed: %s\n", strerror(rc)), -1);
+	return (0);
 }
 
 /* Job j = port index j / nb_scans, scan j % nb_scans: every scan of a port is
@@ -29,11 +41,12 @@ static void	*worker(void *arg)
 	long		job;
 	int			port_i, slot;
 	t_result	res;
+	int			failed = 0;
 
 	if (!w->ready && scanner_init(&w->sc, w->dst, w->sport_base, w->sport_count) < 0)
 	{
 		set_error(ctx);
-		return (NULL);
+		return ((void *)(intptr_t)1);
 	}
 	w->ready = 1;
 	while ((job = take_job(ctx)) >= 0)
@@ -42,14 +55,17 @@ static void	*worker(void *arg)
 		slot = ctx->scan_slot[job % ctx->nb_scans];
 		if (scan_port(&w->sc, ctx->cfg->ports[port_i], g_scan_order[slot], &res) < 0)
 		{
-			set_error(ctx);
+			if (set_error(ctx) < 0)
+				failed = 1;
 			break ;
 		}
 		ctx->results[port_i].res[slot] = res;
 	}
+	if (job == -2)
+		failed = 1;
 	scanner_close(&w->sc);		/* closed by its own thread too: see open_workers() */
 	w->ready = 0;
-	return (NULL);
+	return (failed ? (void *)(intptr_t)1 : NULL);
 }
 
 static void	init_ctx(t_job_ctx *ctx, const t_nmap *cfg, t_port_result *results)
@@ -131,19 +147,32 @@ int	run_scan(const t_nmap *cfg, struct in_addr dst, t_port_result *results)
 	if (!w)
 		return (pthread_mutex_destroy(&ctx.lock), -1);
 	if (cfg->speedup == 0)
-		worker(&w[0]);
+	{
+		if (worker(&w[0]) != NULL)
+			ctx.error = 1;
+	}
 	else
 	{
 		for (; started < n; started++)
 			if ((errno = pthread_create(&w[started].tid, NULL, worker, &w[started])) != 0)
 			{
 				perror("ft_nmap: pthread_create");
-				set_error(&ctx);
+				if (set_error(&ctx) < 0)
+					ctx.error = 1;
 				break ;
 			}
 		for (int i = 0; i < started; i++)
-			if ((errno = pthread_join(w[i].tid, NULL)) != 0)
+		{
+			void	*status;
+
+			if ((errno = pthread_join(w[i].tid, &status)) != 0)
+			{
 				fprintf(stderr, "ft_nmap: pthread_join failed: %s\n", strerror(errno));
+				ctx.error = 1;
+			}
+			else if (status != NULL)
+				ctx.error = 1;
+		}
 	}
 	close_workers(w, n);
 	if (pthread_mutex_destroy(&ctx.lock) != 0)

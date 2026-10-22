@@ -79,7 +79,7 @@ int	main(void)
 	n = mk_tcp_reply(b, DPORT, SPORT + 1, 0x12); CHECK(parse_reply(b, n, &p), RES_NONE, "other source port -> ignored");
 	n = mk_icmp(b, ROUTER, 13, IPPROTO_TCP, SPORT, DPORT); CHECK(parse_reply(b, n, &p), RES_FILTERED, "ICMP code 13 from router -> Filtered");
 	n = mk_icmp(b, DST, 3, IPPROTO_TCP, SPORT, DPORT);     CHECK(parse_reply(b, n, &p), RES_FILTERED, "ICMP code 3 (TCP scan) -> Filtered");
-	n = mk_icmp(b, DST, 0, IPPROTO_TCP, SPORT, DPORT);     CHECK(parse_reply(b, n, &p), RES_NONE, "ICMP code 0 -> ignored");
+	n = mk_icmp(b, DST, 0, IPPROTO_TCP, SPORT, DPORT);     CHECK(parse_reply(b, n, &p), RES_FILTERED, "ICMP code 0 -> Filtered");
 	n = mk_icmp(b, DST, 3, IPPROTO_TCP, SPORT, 81);        CHECK(parse_reply(b, n, &p), RES_NONE, "ICMP about another port -> ignored");
 	n = mk_icmp(b, DST, 3, IPPROTO_UDP, SPORT, DPORT);     CHECK(parse_reply(b, n, &p), RES_NONE, "ICMP about UDP during TCP scan -> ignored");
 
@@ -128,6 +128,18 @@ int	main(void)
 		b[0] = 0x65;					/* not IPv4 */
 		CHECK(parse_reply(b, full, &p), RES_NONE, "non-IPv4 -> ignored");
 		CHECK(parse_reply(NULL, 0, &p), RES_NONE, "NULL packet -> ignored");
+		n = mk_tcp_reply(b, DPORT, SPORT, 0x12);
+		b[32] = 0x40;
+		CHECK(parse_reply(b, n, &p), RES_NONE, "short TCP data offset -> ignored");
+		n = mk_udp_reply(b, DPORT, SPORT);
+		wr16(b + 24, 4);
+		CHECK(parse_reply(b, n, &p), RES_NONE, "short UDP length -> ignored");
+		n = mk_tcp_reply(b, DPORT, SPORT, 0x12);
+		b[16] = ROUTER.s_addr & 0xFF;
+		CHECK(parse_reply(b, n, &p), RES_NONE, "wrong destination IP -> ignored");
+		n = mk_tcp_reply(b, DPORT, SPORT, 0x12);
+		b[6] = 0x20;
+		CHECK(parse_reply(b, n, &p), RES_NONE, "fragmented IPv4 reply -> ignored");
 	}
 	printf("%s\n", fails ? "SOME TESTS FAILED" : "All reply tests passed");
 	return (fails != 0);

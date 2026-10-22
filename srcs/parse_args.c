@@ -87,6 +87,12 @@ static int	parse_ports(const char *arg, t_nmap *cfg)
 	long			lo = 0, hi = 0;
 	int				count = 0;
 
+	if (!arg || !*arg || arg[0] == ',' || arg[strlen(arg) - 1] == ','
+		|| strstr(arg, ",,"))
+	{
+		fprintf(stderr, "ft_nmap: invalid port specification '%s'\n", arg ? arg : "");
+		return (-1);
+	}
 	copy = strdup(arg);
 	if (!copy)
 		return (perror("ft_nmap: strdup"), -1);
@@ -225,6 +231,11 @@ static int	load_targets_file(t_nmap *cfg, const char *path)
 			break ;
 		}
 	}
+	if (ferror(fp))
+	{
+		fprintf(stderr, "ft_nmap: error reading '%s': %s\n", path, strerror(errno));
+		ret = -1;
+	}
 	free(line);
 	if (fclose(fp) != 0)
 		return (perror("ft_nmap: fclose"), -1);
@@ -248,6 +259,10 @@ void	parse_args(int argc, char **argv, t_nmap *cfg)
 	int		opt;
 	long	val;
 	int		ports_given = 0;
+	int		ip_given = 0;
+	int		file_given = 0;
+	int		speedup_given = 0;
+	int		scan_given = 0;
 
 	memset(cfg, 0, sizeof(*cfg));
 	optind = 1;
@@ -260,27 +275,56 @@ void	parse_args(int argc, char **argv, t_nmap *cfg)
 			print_usage(stdout);
 			exit(0);
 		case 'p':
+			if (ports_given)
+			{
+				fprintf(stderr, "ft_nmap: --ports/--port specified more than once\n");
+				fail(cfg);
+			}
 			if (parse_ports(optarg, cfg) != 0)
 				fail(cfg);
 			ports_given = 1;
 			break ;
 		case 'i':
+			if (ip_given)
+			{
+				fprintf(stderr, "ft_nmap: --ip specified more than once\n");
+				fail(cfg);
+			}
 			cfg->ip_arg = optarg;
+			ip_given = 1;
 			break ;
 		case 'f':
+			if (file_given)
+			{
+				fprintf(stderr, "ft_nmap: --file specified more than once\n");
+				fail(cfg);
+			}
 			cfg->file_arg = optarg;
+			file_given = 1;
 			break ;
 		case 's':
+			if (speedup_given)
+			{
+				fprintf(stderr, "ft_nmap: --speedup specified more than once\n");
+				fail(cfg);
+			}
 			if (parse_long(optarg, 0, MAX_THREADS, &val) != 0)
 			{
 				fprintf(stderr, "ft_nmap: speedup must be a number between 0 and %d\n", MAX_THREADS);
 				fail(cfg);
 			}
 			cfg->speedup = (int)val;
+			speedup_given = 1;
 			break ;
 		case 'S':
+			if (scan_given)
+			{
+				fprintf(stderr, "ft_nmap: --scan specified more than once\n");
+				fail(cfg);
+			}
 			if (parse_scans(optarg, cfg) != 0)
 				fail(cfg);
+			scan_given = 1;
 			break ;
 		default:	/* getopt_long already printed the error */
 			fail(cfg);
