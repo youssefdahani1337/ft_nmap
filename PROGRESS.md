@@ -56,7 +56,7 @@ analysis of the code in this repository plus a test run.
 | — | Big live test suite (`test_live.sh`) | ✅ |
 | 8 | Threading (`--speedup`) | ✅ 2026-10-21 (see §6) |
 | 9 | Service names (`getservbyport`) | ✅ 2026-10-22 |
-| 10 | Conclusion, timing and the two output tables | ⬜ **NEXT** |
+| 10 | Conclusion, timing and the two output tables | ✅ 2026-10-22 |
 | 11 | Robustness review: every return value, frees, non-root | ⬜ (partly done) |
 | 12 | Full test campaign (thread counts, valgrind, helgrind) | ⬜ |
 | 13 | Bonus | ⬜ |
@@ -150,15 +150,37 @@ Implemented in `srcs/main.c`:
 - Updated `print_raw()` to display service names alongside ports
 - Verified with standard ports: 80→http, 443→https, 22→ssh
 
-## 8. Next steps (steps 10-12)
+## 8. Conclusion and Output Tables (step 10, DONE 2026-10-22)
 
-- **Conclusion**: Open if any scan says Open. Otherwise Filtered if SYN says Filtered (as in the subject's example), otherwise Closed. Check this against the subject PDF once more.
-- **Timing**: already done in `main.c` (`gettimeofday`, `Scan took %.5f secs`).
-- **Output**: the config header, `Scanning..`, then the two aligned tables per target. The loop over all targets already exists in `scan_all()`.
-- Replace `print_raw()` with the tables, then **update `test_live.sh`**: its `row()` and `check_row()` parse the raw `PORT SYN(x) ...` lines, and section 4 compares those lines across thread counts.
+Implemented in `srcs/main.c`:
+- **`get_conclusion()`**: Determines Open/Filtered/Closed based on scan results
+  - Open if any scan says Open
+  - Filtered if SYN (index 0) says Filtered
+  - Otherwise Closed
+- **`print_results()`**: Outputs IP address followed by two tables
+- **`print_table()`**: Formats separate tables for Open vs Closed/Filtered/Unfiltered
+- **`print_port_row()`**: Formats one port with all scan results and conclusion
+- Replaced `print_raw()` with new table-based output
+- Timing already done: `"Scan took X.XXXXX secs"` from `gettimeofday()`
+
+Output format:
+```
+IP address: x.x.x.x
+Open ports:
+Port Service Name (if applicable) Results                        Conclusion
+---------------------------------------------------------------------------
+80   http                         SYN(Open) NULL(...) ...        Open
+
+Closed/Filtered/Unfiltered ports:
+...
+```
+
+## 9. Next steps (step 11-13)
+
+- **Test_live.sh update**: Currently parses raw `PORT SYN(x) ...` lines, needs update for new table format
 - Robustness: check every return value (malloc, pcap_*, pthread_*, sendto), handle unreachable hosts, and free everything.
 
-## 9. Repository housekeeping (found during analysis)
+## 10. Repository housekeeping (found during analysis)
 
 - [x] **`tests/test_packet.c` restored** (2026-10-22). Created with 21 unit tests:
   - Checksum consistency tests
@@ -170,7 +192,7 @@ Implemented in `srcs/main.c`:
 - [x] **`.gitignore` added** (2026-10-22): excludes `*.o`, `ft_nmap`, test binaries, and editor temp files.
 - [ ] Nothing is committed beyond the initial README, which is a stub.
 
-## 10. Test status (2026-10-22, after service names)
+## 11. Test status (2026-10-22, after output tables)
 
 | Command | Root | Result |
 |---|---|---|
@@ -184,7 +206,7 @@ Implemented in `srcs/main.c`:
 gives root inside a private network namespace. Raw sockets, pcap and iptables
 all work there, on a private loopback.
 
-## 11. How to resume
+## 12. How to resume
 
 ```bash
 make
@@ -194,6 +216,6 @@ sudo bash tests/test_live.sh
 sudo ./ft_nmap --ip 127.0.0.1 --ports 20-25 --scan SYN/UDP --speedup 10
 ```
 
-Suggested order: §10 (Conclusion and final output tables), then §11 (robustness review).
+Suggested order: update §11 (test_live.sh for new output format), then §12 (robustness review).
 
 Only scan machines you own or have permission to scan.
