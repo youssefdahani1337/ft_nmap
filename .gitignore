@@ -1,0 +1,11 @@
+# Build artifacts
+*.o
+ft_nmap
+tests/test_packet
+tests/test_reply
+
+# Editor temp files
+*~
+*.swp
+.vscode/
+.DS_Store
