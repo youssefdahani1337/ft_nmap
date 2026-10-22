@@ -153,9 +153,14 @@ Measured on loopback (inside `unshare -rn`):
 
 ## 8. Repository housekeeping (found during analysis)
 
-- [ ] **`tests/test_packet.c` is missing.** The conversation created it (21 checksum, flag and length tests, including the RFC 1071 vector), but it never reached this repo. The Makefile's `test_packet` target, and so `make test`, fail. Recreate it or drop the target.
+- [x] **`tests/test_packet.c` restored** (2026-10-22). Created with 21 unit tests:
+  - Checksum consistency tests
+  - L4 checksum tests for TCP and UDP
+  - build_tcp() tests for all scan types with flag verification
+  - build_udp() tests including zero-checksum handling
+  - All tests passing
 - [ ] `CLAUDE.md` (the project briefing written in the conversation) isn't in the repo either.
-- [ ] There's no `.gitignore`: `srcs/*.o`, `ft_nmap` and the test binaries are untracked build output.
+- [x] **`.gitignore` added** (2026-10-22): excludes `*.o`, `ft_nmap`, test binaries, and editor temp files.
 - [ ] Nothing is committed beyond the initial README, which is a stub.
 
 ## 9. Test status (2026-10-21, after threading)
