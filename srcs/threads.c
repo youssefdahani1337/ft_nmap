@@ -142,9 +142,11 @@ int	run_scan(const t_nmap *cfg, struct in_addr dst, t_port_result *results)
 				break ;
 			}
 		for (int i = 0; i < started; i++)
-			pthread_join(w[i].tid, NULL);
+			if ((errno = pthread_join(w[i].tid, NULL)) != 0)
+				fprintf(stderr, "ft_nmap: pthread_join failed: %s\n", strerror(errno));
 	}
 	close_workers(w, n);
-	pthread_mutex_destroy(&ctx.lock);
+	if (pthread_mutex_destroy(&ctx.lock) != 0)
+		fprintf(stderr, "ft_nmap: pthread_mutex_destroy failed\n");
 	return (ctx.error ? -1 : 0);
 }

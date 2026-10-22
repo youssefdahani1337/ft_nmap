@@ -3,7 +3,7 @@ CC		= gcc
 CFLAGS	= -Wall -Wextra -Werror -Iincludes
 LDFLAGS	= -lpcap -lpthread
 
-SRCS	= srcs/main.c srcs/parse_args.c srcs/packet.c srcs/capture.c srcs/scan.c srcs/threads.c
+SRCS	= srcs/main.c srcs/parse_args.c 	srcs/packet.c srcs/capture.c srcs/scan.c srcs/threads.c
 OBJS	= $(SRCS:.c=.o)
 HEADERS	= includes/ft_nmap.h includes/packet.h includes/scan.h includes/threads.h
 

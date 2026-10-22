@@ -226,7 +226,8 @@ static int	load_targets_file(t_nmap *cfg, const char *path)
 		}
 	}
 	free(line);
-	fclose(fp);
+	if (fclose(fp) != 0)
+		return (perror("ft_nmap: fclose"), -1);
 	return (ret);
 }
 

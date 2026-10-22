@@ -44,7 +44,7 @@ static int	link_header_len(pcap_t *handle)
 	case DLT_RAW:			return (0);
 	case DLT_LINUX_SLL:		return (16);
 #ifdef DLT_LINUX_SLL2
-	case DLT_LINUX_SLL2:	return (20);
+		case DLT_LINUX_SLL2:	return (20);
 #endif
 	default:				return (-1);
 	}
@@ -150,6 +150,8 @@ int	scanner_init(t_scanner *sc, struct in_addr dst, uint16_t sport_base,
 		return (scanner_close(sc), -1);
 	}
 	sc->fd = pcap_get_selectable_fd(sc->handle);
+	if (sc->fd < 0)
+		fprintf(stderr, "ft_nmap: warning: pcap_get_selectable_fd failed, poll() will be unavailable\n");
 	if (set_filter(sc->handle, sc) < 0
 		|| (sc->tcp_sock = open_raw_socket(IPPROTO_TCP)) < 0
 		|| (sc->udp_sock = open_raw_socket(IPPROTO_UDP)) < 0)
