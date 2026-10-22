@@ -55,8 +55,8 @@ analysis of the code in this repository plus a test run.
 | 7 | `scan_port()` for one port, without threads | ✅ |
 | — | Big live test suite (`test_live.sh`) | ✅ |
 | 8 | Threading (`--speedup`) | ✅ 2026-10-21 (see §6) |
-| 9 | Service names (`getservbyport`) | ⬜ **NEXT** |
-| 10 | Conclusion, timing and the two output tables | ⬜ |
+| 9 | Service names (`getservbyport`) | ✅ 2026-10-22 |
+| 10 | Conclusion, timing and the two output tables | ⬜ **NEXT** |
 | 11 | Robustness review: every return value, frees, non-root | ⬜ (partly done) |
 | 12 | Full test campaign (thread counts, valgrind, helgrind) | ⬜ |
 | 13 | Bonus | ⬜ |
@@ -142,16 +142,23 @@ Measured on loopback (inside `unshare -rn`):
 - The `test_live.sh` ports: 18 s with speedup 0 or 1, 4 s with 7, and 2 s with 70 or 250. The 2 s floor is the silent probes: 1 s timeout plus one retry.
 - UDP on closed ports is limited by the kernel's ICMP rate limiting, which affects real nmap too.
 
-## 7. Then (steps 9-12)
+## 7. Service Names (step 9, DONE 2026-10-22)
 
-- **Services**: `getservbyport(htons(port), "tcp")` (use `"udp"` for UDP-only results). If it returns NULL, print `Unassigned`.
+Implemented in `srcs/main.c`:
+- Added `get_service_name(port)` helper using `getservbyport(htons(port), "tcp")`
+- Returns service name (e.g., "http", "ssh") or "Unassigned" for unknown ports
+- Updated `print_raw()` to display service names alongside ports
+- Verified with standard ports: 80→http, 443→https, 22→ssh
+
+## 8. Next steps (steps 10-12)
+
 - **Conclusion**: Open if any scan says Open. Otherwise Filtered if SYN says Filtered (as in the subject's example), otherwise Closed. Check this against the subject PDF once more.
 - **Timing**: already done in `main.c` (`gettimeofday`, `Scan took %.5f secs`).
 - **Output**: the config header, `Scanning..`, then the two aligned tables per target. The loop over all targets already exists in `scan_all()`.
 - Replace `print_raw()` with the tables, then **update `test_live.sh`**: its `row()` and `check_row()` parse the raw `PORT SYN(x) ...` lines, and section 4 compares those lines across thread counts.
 - Robustness: check every return value (malloc, pcap_*, pthread_*, sendto), handle unreachable hosts, and free everything.
 
-## 8. Repository housekeeping (found during analysis)
+## 9. Repository housekeeping (found during analysis)
 
 - [x] **`tests/test_packet.c` restored** (2026-10-22). Created with 21 unit tests:
   - Checksum consistency tests
@@ -163,13 +170,13 @@ Measured on loopback (inside `unshare -rn`):
 - [x] **`.gitignore` added** (2026-10-22): excludes `*.o`, `ft_nmap`, test binaries, and editor temp files.
 - [ ] Nothing is committed beyond the initial README, which is a stub.
 
-## 9. Test status (2026-10-21, after threading)
+## 10. Test status (2026-10-22, after service names)
 
 | Command | Root | Result |
 |---|---|---|
 | `bash tests/test_parse.sh` | no | ✅ 82/82 |
 | `make test_reply` | no | ✅ all passed |
-| `make test_packet` / `make test` | no | ❌ missing `tests/test_packet.c` |
+| `make test_packet` / `make test` | no | ✅ 21 tests + 82 parsing tests |
 | `sudo bash tests/test_live.sh` | yes | ✅ 32/34 inside `unshare -rn`. The 2 failures are the `setpriv` non-root case, which can't work in a namespace that only maps uid 0. The non-root path was checked separately: exit code 255 and the "try sudo" message. Run it with real sudo to confirm all 34. |
 | helgrind with 20 threads, memcheck with 20 threads | yes | ✅ no races, no leaks |
 
@@ -177,7 +184,7 @@ Measured on loopback (inside `unshare -rn`):
 gives root inside a private network namespace. Raw sockets, pcap and iptables
 all work there, on a private loopback.
 
-## 10. How to resume
+## 11. How to resume
 
 ```bash
 make
@@ -187,7 +194,6 @@ sudo bash tests/test_live.sh
 sudo ./ft_nmap --ip 127.0.0.1 --ports 20-25 --scan SYN/UDP --speedup 10
 ```
 
-Suggested order: fix §8 (restore `test_packet.c` and add a `.gitignore`), then
-§7 (service names, Conclusion and the final output tables).
+Suggested order: §10 (Conclusion and final output tables), then §11 (robustness review).
 
 Only scan machines you own or have permission to scan.
