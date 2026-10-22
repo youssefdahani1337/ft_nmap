@@ -28,7 +28,8 @@ trap cleanup EXIT
 add_rule() { iptables -A INPUT $1 2>/dev/null && RULES+=("$1"); }
 
 # row <file> <port> -> "SYN(Open) NULL(...) ..." for that port
-row() { awk -v p="$2" '$1==p {$1=""; sub(/^ /,""); print}' "$1"; }
+# New format includes service name and conclusion; extract just the results
+row() { awk -v p="$2" '$1==p {$1=""; $2=""; $(NF)=""; sub(/^ +/, ""); sub(/ +$/, ""); print}' "$1"; }
 
 check_row() {   # check_row <file> <port> <expected> <label>
 	local got; got=$(row "$1" "$2")
