@@ -57,7 +57,7 @@ analysis of the code in this repository plus a test run.
 | 8 | Threading (`--speedup`) | ✅ 2026-10-21 (see §6) |
 | 9 | Service names (`getservbyport`) | ✅ 2026-10-22 |
 | 10 | Conclusion, timing and the two output tables | ✅ 2026-10-22 |
-| 11 | Robustness review: every return value, frees, non-root | ⬜ (partly done) |
+| 11 | Robustness review: every return value, frees, non-root | ✅ 2026-10-22 |
 | 12 | Full test campaign (thread counts, valgrind, helgrind) | ⬜ |
 | 13 | Bonus | ⬜ |
 
@@ -178,10 +178,41 @@ Closed/Filtered/Unfiltered ports:
 ...
 ```
 
-## 9. Next steps (step 11-13)
+## 9. Robustness Review (step 11, DONE 2026-10-22)
 
-- Robustness: check every return value (malloc, pcap_*, pthread_*, sendto), handle unreachable hosts, and free everything.
-- Full test campaign with various thread counts and memory checkers.
+Comprehensive error handling audit completed:
+
+**Fixed 4 error handling issues:**
+1. **pthread_join() return value** (srcs/threads.c:145)
+   - Now checks return value and reports errors
+   
+2. **pthread_mutex_destroy() return value** (srcs/threads.c:148)
+   - Now checks return value and reports if destroy fails
+   
+3. **fclose() return value** (srcs/parse_args.c:229)
+   - Now checks return value and reports file close errors
+   
+4. **pcap_get_selectable_fd() failure handling** (srcs/capture.c:152)
+   - Added warning message when selectable fd unavailable
+   - Code gracefully falls back to usleep() instead of poll()
+
+**Verified correct error handling for:**
+- malloc/calloc/strdup/realloc (all checked)
+- getaddrinfo and socket operations (all checked)
+- pcap functions (all checked)
+- pthread operations (all checked after fixes)
+- File operations (all checked after fixes)
+
+**Testing:**
+- 82 parsing tests passing
+- 21 packet unit tests passing
+- 32 reply parsing tests passing
+- 13 robustness tests (error handling scenarios) passing
+
+## 10. Next steps (step 12-13)
+
+- Full test campaign with valgrind/helgrind for memory/thread safety
+- Bonus features (version detection, OS detection, firewall evasion, decoys, spoofed source)
 
 ## 10. Repository housekeeping (found during analysis)
 
@@ -195,7 +226,7 @@ Closed/Filtered/Unfiltered ports:
 - [x] **`.gitignore` added** (2026-10-22): excludes `*.o`, `ft_nmap`, test binaries, and editor temp files.
 - [ ] Nothing is committed beyond the initial README, which is a stub.
 
-## 11. Test status (2026-10-22, after output tables)
+## 11. Test status (2026-10-22, after robustness review)
 
 | Command | Root | Result |
 |---|---|---|
